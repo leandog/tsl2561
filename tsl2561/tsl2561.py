@@ -14,8 +14,9 @@ https://github.com/adafruit/Adafruit_TSL2561
 
 from __future__ import absolute_import
 import time
-from Adafruit_I2C import Adafruit_I2C
-from .constants import *  # pylint: disable=unused-wildcard-import
+import pigpio
+import io_helpers as io
+from constants import *  # pylint: disable=unused-wildcard-import
 
 __author__ = 'Georges Toth <georges@trypill.org>'
 __credits__ = ['K.Townsend (Adafruit Industries)']
@@ -28,18 +29,22 @@ v2.0 - Rewrote driver for Adafruit_Sensor and Auto-Gain support, and
 v1.0 - First release (previously TSL2561)
 '''
 
+bus = 1
 
 class TSL2561(object):
     '''Driver for the TSL2561 digital luminosity (light) sensors.'''
     def __init__(self, address=None,
-                 integration_time=TSL2561_DELAY_INTTIME_402MS,
+                 device=None, integration_time=TSL2561_DELAY_INTTIME_402MS,
                  gain=TSL2561_GAIN_1X, autogain=False, debug=False):
         if address is not None:
             self.address = address
         else:
             self.address = TSL2561_ADDR_FLOAT
 
-        self.i2c = Adafruit_I2C(self.address)
+        if device is not None:
+            self.device = device
+        else:
+            self.device = pigpio.pi()
 
         self.debug = debug
         self.integration_time = integration_time
@@ -53,7 +58,9 @@ class TSL2561(object):
         doing anything else)
         '''
         # Make sure we're actually connected
-        x = self.i2c.readU8(TSL2561_REGISTER_ID)
+        handle = self.device.i2c_open(bus, self.address)
+        x = io.readU8(self.device, handle, TSL2561_REGISTER_ID)
+        self.device.i2c_close(handle)
 
         if not x & 0x0A:
             raise Exception('TSL2561 not found!')
@@ -68,13 +75,17 @@ class TSL2561(object):
 
     def enable(self):
         '''Enable the device by setting the control bit to 0x03'''
-        self.i2c.write8(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL,
+        handle = self.device.i2c_open(bus, self.address)
+        io.write8(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL,
                         TSL2561_CONTROL_POWERON)
+        self.device.i2c_close(handle)
 
     def disable(self):
         '''Disables the device (putting it in lower power sleep mode)'''
-        self.i2c.write8(TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL,
+        handle = self.device.i2c_open(bus, self.address)
+        io.write8(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_REGISTER_CONTROL,
                         TSL2561_CONTROL_POWEROFF)
+        self.device.i2c_close(handle)
 
     @staticmethod
     def delay(value):
@@ -94,12 +105,14 @@ class TSL2561(object):
         TSL2561.delay(self.integration_time)
 
         # Reads a two byte value from channel 0 (visible + infrared)
-        broadband = self.i2c.readU16(TSL2561_COMMAND_BIT | TSL2561_WORD_BIT |
+        handle = self.device.i2c_open(bus, self.address)
+        broadband = io.readU16(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_WORD_BIT |
                                      TSL2561_REGISTER_CHAN0_LOW)
 
         # Reads a two byte value from channel 1 (infrared)
-        ir = self.i2c.readU16(TSL2561_COMMAND_BIT | TSL2561_WORD_BIT |
+        ir = io.readU16(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_WORD_BIT |
                               TSL2561_REGISTER_CHAN1_LOW)
+        self.device.i2c_close(handle)
 
         # Turn the device off to save power
         self.disable()
@@ -115,8 +128,10 @@ class TSL2561(object):
         self.integration_time = integration_time
 
         # Update the timing register
-        self.i2c.write8(TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING,
+        handle = self.device.i2c_open(bus, self.address)
+        io.write8(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING,
                         self.integration_time | self.gain)
+        self.device.i2c_close(handle)
 
         # Turn the device off to save power
         self.disable()
@@ -131,8 +146,10 @@ class TSL2561(object):
         self.gain = gain
 
         # Update the timing register
-        self.i2c.write8(TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING,
+        handle = self.device.i2c_open(bus, self.address)
+        io.write8(self.device, handle, TSL2561_COMMAND_BIT | TSL2561_REGISTER_TIMING,
                         self.integration_time | self.gain)
+        self.device.i2c_close(handle)
 
         # Turn the device off to save power
         self.disable()
